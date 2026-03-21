@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 
 type PosBubble = {
   id: number;
@@ -703,19 +703,19 @@ ${groupsXml}
   );
 }
 
-const cardStyle: React.CSSProperties = {
+const cardStyle: CSSProperties = {
   border: "1px solid rgba(255,255,255,0.08)",
   borderRadius: 24,
   padding: 24,
   background: "rgba(15,23,42,0.82)",
 };
 
-const sectionTitleStyle: React.CSSProperties = {
+const sectionTitleStyle: CSSProperties = {
   marginTop: 0,
   marginBottom: 16,
 };
 
-const inputStyle: React.CSSProperties = {
+const inputStyle: CSSProperties = {
   padding: 14,
   borderRadius: 14,
   border: "1px solid rgba(255,255,255,0.08)",
@@ -725,7 +725,7 @@ const inputStyle: React.CSSProperties = {
   fontSize: 15,
 };
 
-const greenButtonStyle: React.CSSProperties = {
+const greenButtonStyle: CSSProperties = {
   border: "none",
   borderRadius: 14,
   padding: "14px 16px",
@@ -735,7 +735,7 @@ const greenButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const blueButtonStyle: React.CSSProperties = {
+const blueButtonStyle: CSSProperties = {
   border: "none",
   borderRadius: 14,
   padding: "14px 16px",
@@ -745,7 +745,7 @@ const blueButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const deleteButtonStyle: React.CSSProperties = {
+const deleteButtonStyle: CSSProperties = {
   border: "none",
   borderRadius: 10,
   padding: "8px 12px",
@@ -755,7 +755,7 @@ const deleteButtonStyle: React.CSSProperties = {
   cursor: "pointer",
 };
 
-const checkboxRowStyle: React.CSSProperties = {
+const checkboxRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 10,
