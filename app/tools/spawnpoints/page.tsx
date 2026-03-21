@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useRef, useState, type ChangeEvent, type CSSProperties } from "react";
+import {
+  useMemo,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type CSSProperties,
+} from "react";
+import MapCanvas from "@/components/map-canvas";
 
 type PosBubble = {
   id: number;
@@ -41,6 +48,26 @@ type GroupParams = {
   counter: string;
 };
 
+const MAPS = {
+  chernarus: {
+    label: "Chernarus",
+    image: "/maps/chernarus.png",
+    worldSize: 15360,
+  },
+  livonia: {
+    label: "Livonia",
+    image: "/maps/livonia.png",
+    worldSize: 12800,
+  },
+  sakhal: {
+    label: "Sakhal",
+    image: "/maps/sakhal.png",
+    worldSize: 12800,
+  },
+} as const;
+
+type MapKey = keyof typeof MAPS;
+
 function getTagValue(parent: Element, tagName: string, fallback = ""): string {
   const node = parent.querySelector(tagName);
   return node?.textContent?.trim() || fallback;
@@ -55,6 +82,8 @@ function getBoolTagValue(parent: Element, tagName: string, fallback = false): bo
 
 export default function SpawnpointsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [selectedMap, setSelectedMap] = useState<MapKey>("chernarus");
 
   const [groups, setGroups] = useState<SpawnGroup[]>([
     {
@@ -163,6 +192,27 @@ export default function SpawnpointsPage() {
     setZ("");
   };
 
+  const addPosBubbleFromMap = (point: { x: number; z: number }) => {
+    if (!selectedGroup) return;
+
+    const newPos: PosBubble = {
+      id: Date.now(),
+      x: String(point.x),
+      z: String(point.z),
+    };
+
+    setGroups((prev) =>
+      prev.map((group) =>
+        group.id === selectedGroup.id
+          ? { ...group, positions: [...group.positions, newPos] }
+          : group
+      )
+    );
+
+    setX(String(point.x));
+    setZ(String(point.z));
+  };
+
   const removePosBubble = (groupId: number, posId: number) => {
     setGroups((prev) =>
       prev.map((group) =>
@@ -252,15 +302,6 @@ export default function SpawnpointsPage() {
         setGroups(importedGroups);
         setSelectedGroupId(importedGroups[0].id);
         setGroupNameInput(importedGroups[0].name);
-      } else {
-        const fallbackGroup: SpawnGroup = {
-          id: Date.now(),
-          name: "CustomGroup",
-          positions: [],
-        };
-        setGroups([fallbackGroup]);
-        setSelectedGroupId(fallbackGroup.id);
-        setGroupNameInput(fallbackGroup.name);
       }
 
       setImportStatus(`XML importiert: ${file.name}`);
@@ -274,6 +315,17 @@ export default function SpawnpointsPage() {
       event.target.value = "";
     }
   };
+
+  const currentMap = MAPS[selectedMap];
+
+  const mapMarkers = useMemo(() => {
+    return (selectedGroup?.positions ?? []).map((pos) => ({
+      id: pos.id,
+      x: Number(pos.x) || 0,
+      z: Number(pos.z) || 0,
+      label: selectedGroup?.name,
+    }));
+  }, [selectedGroup]);
 
   const xmlOutput = useMemo(() => {
     const groupsXml = groups
@@ -392,7 +444,7 @@ ${groupsXml}
               lineHeight: 1.7,
             }}
           >
-            XML importieren, bearbeiten und wieder als DayZ-Datei exportieren.
+            XML importieren, Gruppen bearbeiten und Spawnpunkte direkt auf der Karte setzen.
           </p>
 
           <div
@@ -427,10 +479,44 @@ ${groupsXml}
 
         <div
           style={{
+            display: "flex",
+            gap: 10,
+            flexWrap: "wrap",
+            marginBottom: 24,
+          }}
+        >
+          {(Object.keys(MAPS) as MapKey[]).map((mapKey) => (
+            <button
+              key={mapKey}
+              onClick={() => setSelectedMap(mapKey)}
+              style={{
+                ...(
+                  selectedMap === mapKey
+                    ? greenButtonStyle
+                    : blueButtonStyle
+                ),
+                padding: "10px 14px",
+              }}
+            >
+              {MAPS[mapKey].label}
+            </button>
+          ))}
+        </div>
+
+        <MapCanvas
+          image={currentMap.image}
+          worldSize={currentMap.worldSize}
+          markers={mapMarkers}
+          onAddPoint={addPosBubbleFromMap}
+        />
+
+        <div
+          style={{
             display: "grid",
             gridTemplateColumns: "1.1fr 0.9fr",
             gap: 24,
             alignItems: "start",
+            marginTop: 24,
           }}
         >
           <section style={cardStyle}>
