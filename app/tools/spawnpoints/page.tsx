@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import {
   useMemo,
   useRef,
@@ -8,7 +9,34 @@ import {
   type ChangeEvent,
   type CSSProperties,
 } from "react";
-import MapCanvas from "@/components/map-canvas";
+
+const MapLeaflet = dynamic(() => import("@/components/map-leaflet"), {
+  ssr: false,
+  loading: () => (
+    <div
+      style={{
+        border: "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 24,
+        padding: 16,
+        background: "rgba(15,23,42,0.82)",
+      }}
+    >
+      <div
+        style={{
+          height: 700,
+          borderRadius: 18,
+          background: "#020617",
+          border: "1px solid rgba(255,255,255,0.08)",
+          display: "grid",
+          placeItems: "center",
+          color: "#94a3b8",
+        }}
+      >
+        Karte lädt...
+      </div>
+    </div>
+  ),
+});
 
 type PosBubble = {
   id: number;
@@ -127,6 +155,8 @@ export default function SpawnpointsPage() {
 
   const selectedGroup =
     groups.find((group) => group.id === selectedGroupId) ?? groups[0];
+
+  const currentMap = MAPS[selectedMap];
 
   const addGroup = () => {
     const trimmed = groupNameInput.trim();
@@ -316,8 +346,6 @@ export default function SpawnpointsPage() {
     }
   };
 
-  const currentMap = MAPS[selectedMap];
-
   const mapMarkers = useMemo(() => {
     return (selectedGroup?.positions ?? []).map((pos) => ({
       id: pos.id,
@@ -490,11 +518,7 @@ ${groupsXml}
               key={mapKey}
               onClick={() => setSelectedMap(mapKey)}
               style={{
-                ...(
-                  selectedMap === mapKey
-                    ? greenButtonStyle
-                    : blueButtonStyle
-                ),
+                ...(selectedMap === mapKey ? greenButtonStyle : blueButtonStyle),
                 padding: "10px 14px",
               }}
             >
@@ -503,7 +527,7 @@ ${groupsXml}
           ))}
         </div>
 
-        <MapCanvas
+        <MapLeaflet
           image={currentMap.image}
           worldSize={currentMap.worldSize}
           markers={mapMarkers}
