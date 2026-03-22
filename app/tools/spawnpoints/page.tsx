@@ -1,42 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import dynamic from "next/dynamic";
-import {
-  useMemo,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type CSSProperties,
-} from "react";
-
-const MapLeaflet = dynamic(() => import("@/components/map-leaflet"), {
-  ssr: false,
-  loading: () => (
-    <div
-      style={{
-        border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 24,
-        padding: 16,
-        background: "rgba(15,23,42,0.82)",
-      }}
-    >
-      <div
-        style={{
-          height: 700,
-          borderRadius: 18,
-          background: "#020617",
-          border: "1px solid rgba(255,255,255,0.08)",
-          display: "grid",
-          placeItems: "center",
-          color: "#94a3b8",
-        }}
-      >
-        Karte lädt...
-      </div>
-    </div>
-  ),
-});
+import { useMemo, useState, type CSSProperties } from "react";
 
 type PosBubble = {
   id: number;
@@ -76,33 +41,7 @@ type GroupParams = {
   counter: string;
 };
 
-const MAPS = {
-  chernarus: {
-    label: "Chernarus",
-    image: "/maps/chernarus.png",
-    worldSize: 15360,
-  },
-} as const;
-
-type MapKey = keyof typeof MAPS;
-
-function getTagValue(parent: Element, tagName: string, fallback = ""): string {
-  const node = parent.querySelector(tagName);
-  return node?.textContent?.trim() || fallback;
-}
-
-function getBoolTagValue(parent: Element, tagName: string, fallback = false): boolean {
-  const value = parent.querySelector(tagName)?.textContent?.trim().toLowerCase();
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return fallback;
-}
-
 export default function SpawnpointsPage() {
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const [selectedMap] = useState<MapKey>("chernarus");
-
   const [groups, setGroups] = useState<SpawnGroup[]>([
     {
       id: 1,
@@ -115,7 +54,6 @@ export default function SpawnpointsPage() {
   const [groupNameInput, setGroupNameInput] = useState("CustomGroup");
   const [x, setX] = useState("");
   const [z, setZ] = useState("");
-  const [importStatus, setImportStatus] = useState("");
 
   const [spawnParams, setSpawnParams] = useState<SpawnParams>({
     min_dist_infected: "30",
@@ -145,8 +83,6 @@ export default function SpawnpointsPage() {
 
   const selectedGroup =
     groups.find((group) => group.id === selectedGroupId) ?? groups[0];
-
-  const currentMap = MAPS[selectedMap];
 
   const addGroup = () => {
     const trimmed = groupNameInput.trim();
@@ -212,27 +148,6 @@ export default function SpawnpointsPage() {
     setZ("");
   };
 
-  const addPosBubbleFromMap = (point: { x: number; z: number }) => {
-    if (!selectedGroup) return;
-
-    const newPos: PosBubble = {
-      id: Date.now(),
-      x: String(point.x),
-      z: String(point.z),
-    };
-
-    setGroups((prev) =>
-      prev.map((group) =>
-        group.id === selectedGroup.id
-          ? { ...group, positions: [...group.positions, newPos] }
-          : group
-      )
-    );
-
-    setX(String(point.x));
-    setZ(String(point.z));
-  };
-
   const removePosBubble = (groupId: number, posId: number) => {
     setGroups((prev) =>
       prev.map((group) =>
@@ -245,104 +160,6 @@ export default function SpawnpointsPage() {
       )
     );
   };
-
-  const handleXmlImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const text = await file.text();
-      const parser = new DOMParser();
-      const xmlDoc = parser.parseFromString(text, "application/xml");
-
-      const parserError = xmlDoc.querySelector("parsererror");
-      if (parserError) {
-        throw new Error("Ungültige XML-Datei");
-      }
-
-      const freshNode = xmlDoc.querySelector("playerspawnpoints > fresh");
-      if (!freshNode) {
-        throw new Error("Kein <fresh>-Block gefunden");
-      }
-
-      const spawnParamsNode = freshNode.querySelector("spawn_params");
-      if (spawnParamsNode) {
-        setSpawnParams({
-          min_dist_infected: getTagValue(spawnParamsNode, "min_dist_infected", "30"),
-          max_dist_infected: getTagValue(spawnParamsNode, "max_dist_infected", "70"),
-          min_dist_player: getTagValue(spawnParamsNode, "min_dist_player", "65"),
-          max_dist_player: getTagValue(spawnParamsNode, "max_dist_player", "150"),
-          min_dist_static: getTagValue(spawnParamsNode, "min_dist_static", "0"),
-          max_dist_static: getTagValue(spawnParamsNode, "max_dist_static", "2"),
-        });
-      }
-
-      const generatorParamsNode = freshNode.querySelector("generator_params");
-      if (generatorParamsNode) {
-        setGeneratorParams({
-          grid_density: getTagValue(generatorParamsNode, "grid_density", "4"),
-          grid_width: getTagValue(generatorParamsNode, "grid_width", "200"),
-          grid_height: getTagValue(generatorParamsNode, "grid_height", "200"),
-          min_dist_static: getTagValue(generatorParamsNode, "min_dist_static", "0"),
-          max_dist_static: getTagValue(generatorParamsNode, "max_dist_static", "2"),
-          min_steepness: getTagValue(generatorParamsNode, "min_steepness", "-45"),
-          max_steepness: getTagValue(generatorParamsNode, "max_steepness", "45"),
-        });
-      }
-
-      const groupParamsNode = freshNode.querySelector("group_params");
-      if (groupParamsNode) {
-        setGroupParams({
-          enablegroups: getBoolTagValue(groupParamsNode, "enablegroups", true),
-          groups_as_regular: getBoolTagValue(groupParamsNode, "groups_as_regular", true),
-          lifetime: getTagValue(groupParamsNode, "lifetime", "240"),
-          counter: getTagValue(groupParamsNode, "counter", "-1"),
-        });
-      }
-
-      const importedGroups: SpawnGroup[] = Array.from(
-        freshNode.querySelectorAll("generator_posbubbles > group")
-      ).map((groupNode, groupIndex) => {
-        const positions: PosBubble[] = Array.from(groupNode.querySelectorAll("pos")).map(
-          (posNode, posIndex) => ({
-            id: Date.now() + groupIndex * 1000 + posIndex,
-            x: posNode.getAttribute("x") || "",
-            z: posNode.getAttribute("z") || "",
-          })
-        );
-
-        return {
-          id: Date.now() + groupIndex,
-          name: groupNode.getAttribute("name") || `Group_${groupIndex + 1}`,
-          positions,
-        };
-      });
-
-      if (importedGroups.length > 0) {
-        setGroups(importedGroups);
-        setSelectedGroupId(importedGroups[0].id);
-        setGroupNameInput(importedGroups[0].name);
-      }
-
-      setImportStatus(`XML importiert: ${file.name}`);
-    } catch (error) {
-      setImportStatus(
-        error instanceof Error
-          ? `Import fehlgeschlagen: ${error.message}`
-          : "Import fehlgeschlagen"
-      );
-    } finally {
-      event.target.value = "";
-    }
-  };
-
-  const mapMarkers = useMemo(() => {
-    return (selectedGroup?.positions ?? []).map((pos) => ({
-      id: pos.id,
-      x: Number(pos.x) || 0,
-      z: Number(pos.z) || 0,
-    }));
-  }, [selectedGroup]);
 
   const xmlOutput = useMemo(() => {
     const groupsXml = groups
@@ -426,7 +243,7 @@ ${groupsXml}
     >
       <div style={{ maxWidth: 1320, margin: "0 auto" }}>
         <Link
-          href="/dashboard"
+          href="/dashboard?lang=de"
           style={{
             display: "inline-block",
             marginBottom: 20,
@@ -461,45 +278,9 @@ ${groupsXml}
               lineHeight: 1.7,
             }}
           >
-            XML importieren, Gruppen bearbeiten und Spawnpunkte direkt auf der Karte setzen.
+            Einfacher DayZ playerspawnpoints.xml Generator für Step Mod!Z.
           </p>
-
-          <div
-            style={{
-              display: "flex",
-              gap: 12,
-              flexWrap: "wrap",
-              marginTop: 18,
-              alignItems: "center",
-            }}
-          >
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              style={blueButtonStyle}
-            >
-              XML importieren
-            </button>
-
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".xml,text/xml"
-              onChange={handleXmlImport}
-              style={{ display: "none" }}
-            />
-
-            {importStatus && (
-              <span style={{ color: "#94a3b8" }}>{importStatus}</span>
-            )}
-          </div>
         </div>
-
-        <MapLeaflet
-          image={currentMap.image}
-          worldSize={currentMap.worldSize}
-          markers={mapMarkers}
-          onAddPoint={addPosBubbleFromMap}
-        />
 
         <div
           style={{
@@ -507,7 +288,6 @@ ${groupsXml}
             gridTemplateColumns: "1.1fr 0.9fr",
             gap: 24,
             alignItems: "start",
-            marginTop: 24,
           }}
         >
           <section style={cardStyle}>

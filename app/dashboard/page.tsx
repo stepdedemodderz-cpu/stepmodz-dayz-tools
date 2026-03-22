@@ -1,104 +1,163 @@
-export default function DashboardPage() {
+import Link from "next/link";
+
+type DashboardPageProps = {
+  searchParams?: Promise<{ lang?: string }>;
+};
+
+const content = {
+  de: {
+    back: "Zur Startseite",
+    title: "Dashboard",
+    subtitle:
+      "Willkommen im Step Mod!Z Tool-Portal von StepDede_ModderZ.",
+    toolsTitle: "Verfügbare Tools",
+    spawnTitle: "Playerspawnpoints Generator",
+    spawnText:
+      "Erstelle und exportiere DayZ playerspawnpoints.xml Dateien für deinen Server.",
+    openTool: "Tool öffnen",
+    moreSoon: "Weitere Tools folgen bald",
+    moreSoonText:
+      "Als Nächstes können wir weitere DayZ Server Tools direkt in dieses Portal einbauen.",
+  },
+  en: {
+    back: "Back to home",
+    title: "Dashboard",
+    subtitle: "Welcome to the Step Mod!Z tool portal by StepDede_ModderZ.",
+    toolsTitle: "Available Tools",
+    spawnTitle: "Playerspawnpoints Generator",
+    spawnText:
+      "Create and export DayZ playerspawnpoints.xml files for your server.",
+    openTool: "Open tool",
+    moreSoon: "More tools coming soon",
+    moreSoonText:
+      "Next we can add more DayZ server tools directly into this portal.",
+  },
+};
+
+export default async function DashboardPage({
+  searchParams,
+}: DashboardPageProps) {
+  const params = (await searchParams) ?? {};
+  const lang = params.lang === "en" ? "en" : "de";
+  const t = content[lang];
+
   return (
     <main
       style={{
         minHeight: "100vh",
-        padding: 24,
         background: "linear-gradient(180deg, #020617 0%, #0f172a 100%)",
-        color: "white",
+        color: "#fff",
+        padding: 24,
       }}
     >
-      <div
-        style={{
-          maxWidth: 1100,
-          margin: "0 auto",
-        }}
-      >
-        <a
+      <div style={{ maxWidth: 1280, margin: "0 auto" }}>
+        <Link
           href="/"
           style={{
             display: "inline-block",
-            marginBottom: 24,
+            marginBottom: 20,
             padding: "12px 18px",
-            borderRadius: 12,
+            borderRadius: 14,
             background: "#1e293b",
-            color: "white",
+            color: "#fff",
             textDecoration: "none",
             fontWeight: 700,
           }}
         >
-          ← Zur Startseite
-        </a>
+          ← {t.back}
+        </Link>
 
-        <div
+        <section
           style={{
-            border: "1px solid rgba(255,255,255,0.1)",
-            borderRadius: 24,
-            padding: 30,
-            background: "rgba(15,23,42,0.75)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 28,
+            padding: 28,
+            background: "rgba(15,23,42,0.82)",
+            marginBottom: 24,
           }}
         >
-          <h1 style={{ fontSize: 42, margin: 0 }}>Dashboard</h1>
-          <p style={{ color: "#94a3b8", marginTop: 12, fontSize: 18 }}>
-            Hier kommen deine DayZ Console Server Tools rein.
-          </p>
-        </div>
-
-        <div
-          style={{
-            marginTop: 24,
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: 20,
-          }}
-        >
-          <div
+          <h1 style={{ margin: 0, fontSize: 52, fontWeight: 900 }}>
+            {t.title}
+          </h1>
+          <p
             style={{
-              border: "1px solid rgba(255,255,255,0.1)",
-              borderRadius: 20,
-              padding: 24,
-              background: "rgba(15,23,42,0.75)",
-            }}
-          >
-            <div
-              style={{
-                display: "inline-block",
-                marginBottom: 12,
-                padding: "6px 12px",
-                borderRadius: 999,
-                background: "rgba(34,197,94,0.15)",
-                color: "#86efac",
-                fontWeight: 700,
-              }}
-            >
-              Tool 01
-            </div>
-
-            <h2 style={{ margin: 0, fontSize: 26 }}>
-              Playerspawnpoints.xml Generator
-            </h2>
-
-            <p style={{ color: "#94a3b8", lineHeight: 1.7, marginTop: 12 }}>
-              Als nächstes bauen wir hier deinen Generator für DayZ Spawnpoints ein.
-            </p>
-            <a
-            href="/tools/spawnpoints"
-            style={{
-              display: "inline-block",
               marginTop: 12,
-              padding: "10px 16px",
-              borderRadius: 10,
-              background: "#22c55e",
-              color: "#022c22",
-              fontWeight: 700,
-              textDecoration: "none",
+              color: "#94a3b8",
+              fontSize: 17,
+              lineHeight: 1.7,
             }}
           >
-            Tool öffnen
-          </a>
-          </div>
+            {t.subtitle}
+          </p>
+        </section>
+
+        <h2 style={{ marginTop: 0, marginBottom: 18 }}>{t.toolsTitle}</h2>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+            gap: 24,
+          }}
+        >
+          <article style={cardStyle}>
+            <div style={badgeStyle}>Tool 01</div>
+            <h3 style={cardTitleStyle}>{t.spawnTitle}</h3>
+            <p style={cardTextStyle}>{t.spawnText}</p>
+            <Link
+              href={`/tools/spawnpoints?lang=${lang}`}
+              style={greenLinkStyle}
+            >
+              {t.openTool}
+            </Link>
+          </article>
+
+          <article style={cardStyle}>
+            <div style={badgeStyle}>Next</div>
+            <h3 style={cardTitleStyle}>{t.moreSoon}</h3>
+            <p style={cardTextStyle}>{t.moreSoonText}</p>
+          </article>
         </div>
       </div>
     </main>
   );
 }
+
+const cardStyle: React.CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 24,
+  padding: 24,
+  background: "rgba(15,23,42,0.82)",
+};
+
+const badgeStyle: React.CSSProperties = {
+  display: "inline-block",
+  padding: "8px 12px",
+  borderRadius: 999,
+  background: "rgba(34,197,94,0.18)",
+  color: "#86efac",
+  fontWeight: 800,
+  marginBottom: 16,
+};
+
+const cardTitleStyle: React.CSSProperties = {
+  marginTop: 0,
+  marginBottom: 12,
+  fontSize: 28,
+};
+
+const cardTextStyle: React.CSSProperties = {
+  color: "#94a3b8",
+  lineHeight: 1.7,
+  marginBottom: 20,
+};
+
+const greenLinkStyle: React.CSSProperties = {
+  display: "inline-block",
+  padding: "12px 18px",
+  borderRadius: 14,
+  background: "#22c55e",
+  color: "#052e16",
+  textDecoration: "none",
+  fontWeight: 900,
+};
