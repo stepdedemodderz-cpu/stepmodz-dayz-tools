@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useMemo, useState, type CSSProperties } from "react";
+import DayzMap from "@/components/dayz-map";
+
+type Mode = "fresh" | "hop" | "travel";
 
 type PosBubble = {
   id: number;
@@ -41,17 +44,71 @@ type GroupParams = {
   counter: string;
 };
 
-export default function SpawnpointsPage() {
-  const [groups, setGroups] = useState<SpawnGroup[]>([
-    {
-      id: 1,
-      name: "CustomGroup",
-      positions: [],
-    },
-  ]);
+type ModeData = {
+  groups: SpawnGroup[];
+};
 
-  const [selectedGroupId, setSelectedGroupId] = useState<number>(1);
-  const [groupNameInput, setGroupNameInput] = useState("CustomGroup");
+const MAPS = {
+  chernarus: {
+    label: "Chernarus",
+    image: "/maps/chernarus.png",
+    worldSize: 15360,
+  },
+  livonia: {
+    label: "Livonia",
+    image: "/maps/livonia.png",
+    worldSize: 12800,
+  },
+  sakhal: {
+    label: "Sakhal",
+    image: "/maps/sakhal.png",
+    worldSize: 12800,
+  },
+} as const;
+
+type MapKey = keyof typeof MAPS;
+
+export default function SpawnpointsPage() {
+  const [selectedMap, setSelectedMap] = useState<MapKey>("chernarus");
+  const [selectedMode, setSelectedMode] = useState<Mode>("fresh");
+
+  const [dataByMode, setDataByMode] = useState<Record<Mode, ModeData>>({
+    fresh: {
+      groups: [
+        {
+          id: 1,
+          name: "FreshGroup",
+          positions: [],
+        },
+      ],
+    },
+    hop: {
+      groups: [
+        {
+          id: 2,
+          name: "HopGroup",
+          positions: [],
+        },
+      ],
+    },
+    travel: {
+      groups: [
+        {
+          id: 3,
+          name: "TravelGroup",
+          positions: [],
+        },
+      ],
+    },
+  });
+
+  const [selectedGroupIdByMode, setSelectedGroupIdByMode] = useState<Record<Mode, number>>({
+    fresh: 1,
+    hop: 2,
+    travel: 3,
+  });
+
+  const [groupNameInput, setGroupNameInput] = useState("");
   const [x, setX] = useState("");
   const [z, setZ] = useState("");
 
@@ -81,8 +138,19 @@ export default function SpawnpointsPage() {
     counter: "-1",
   });
 
+  const currentMap = MAPS[selectedMap];
+  const currentGroups = dataByMode[selectedMode].groups;
+  const selectedGroupId = selectedGroupIdByMode[selectedMode];
+
   const selectedGroup =
-    groups.find((group) => group.id === selectedGroupId) ?? groups[0];
+    currentGroups.find((group) => group.id === selectedGroupId) ?? currentGroups[0];
+
+  const updateModeGroups = (mode: Mode, groups: SpawnGroup[]) => {
+    setDataByMode((prev) => ({
+      ...prev,
+      [mode]: { groups },
+    }));
+  };
 
   const addGroup = () => {
     const trimmed = groupNameInput.trim();
@@ -94,34 +162,49 @@ export default function SpawnpointsPage() {
       positions: [],
     };
 
-    setGroups((prev) => [...prev, newGroup]);
-    setSelectedGroupId(newGroup.id);
+    const nextGroups = [...currentGroups, newGroup];
+    updateModeGroups(selectedMode, nextGroups);
+
+    setSelectedGroupIdByMode((prev) => ({
+      ...prev,
+      [selectedMode]: newGroup.id,
+    }));
+
     setGroupNameInput("");
   };
 
   const removeGroup = (groupId: number) => {
-    const updated = groups.filter((group) => group.id !== groupId);
+    const updated = currentGroups.filter((group) => group.id !== groupId);
 
     if (updated.length === 0) {
       const fallback: SpawnGroup = {
         id: Date.now(),
-        name: "CustomGroup",
+        name: `${selectedMode}_group`,
         positions: [],
       };
-      setGroups([fallback]);
-      setSelectedGroupId(fallback.id);
-      setGroupNameInput(fallback.name);
+
+      updateModeGroups(selectedMode, [fallback]);
+
+      setSelectedGroupIdByMode((prev) => ({
+        ...prev,
+        [selectedMode]: fallback.id,
+      }));
+
       return;
     }
 
-    setGroups(updated);
-    setSelectedGroupId(updated[0].id);
-    setGroupNameInput(updated[0].name);
+    updateModeGroups(selectedMode, updated);
+
+    setSelectedGroupIdByMode((prev) => ({
+      ...prev,
+      [selectedMode]: updated[0].id,
+    }));
   };
 
   const renameGroup = (groupId: number, newName: string) => {
-    setGroups((prev) =>
-      prev.map((group) =>
+    updateModeGroups(
+      selectedMode,
+      currentGroups.map((group) =>
         group.id === groupId ? { ...group, name: newName } : group
       )
     );
@@ -136,8 +219,9 @@ export default function SpawnpointsPage() {
       z: z.trim(),
     };
 
-    setGroups((prev) =>
-      prev.map((group) =>
+    updateModeGroups(
+      selectedMode,
+      currentGroups.map((group) =>
         group.id === selectedGroup.id
           ? { ...group, positions: [...group.positions, newPos] }
           : group
@@ -148,9 +232,32 @@ export default function SpawnpointsPage() {
     setZ("");
   };
 
+  const addPosBubbleFromMap = (point: { x: number; z: number }) => {
+    if (!selectedGroup) return;
+
+    const newPos: PosBubble = {
+      id: Date.now(),
+      x: String(point.x),
+      z: String(point.z),
+    };
+
+    updateModeGroups(
+      selectedMode,
+      currentGroups.map((group) =>
+        group.id === selectedGroup.id
+          ? { ...group, positions: [...group.positions, newPos] }
+          : group
+      )
+    );
+
+    setX(String(point.x));
+    setZ(String(point.z));
+  };
+
   const removePosBubble = (groupId: number, posId: number) => {
-    setGroups((prev) =>
-      prev.map((group) =>
+    updateModeGroups(
+      selectedMode,
+      currentGroups.map((group) =>
         group.id === groupId
           ? {
               ...group,
@@ -161,8 +268,16 @@ export default function SpawnpointsPage() {
     );
   };
 
-  const xmlOutput = useMemo(() => {
-    const groupsXml = groups
+  const mapMarkers = useMemo(() => {
+    return (selectedGroup?.positions ?? []).map((pos) => ({
+      id: pos.id,
+      x: Number(pos.x) || 0,
+      z: Number(pos.z) || 0,
+    }));
+  }, [selectedGroup]);
+
+  const buildModeXml = (mode: Mode) => {
+    const groupsXml = dataByMode[mode].groups
       .map((group) => {
         const positionsXml =
           group.positions.length > 0
@@ -177,9 +292,7 @@ ${positionsXml}
       })
       .join("\n");
 
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
-<playerspawnpoints>
-  <fresh>
+    return `  <${mode}>
     <spawn_params>
       <min_dist_infected>${spawnParams.min_dist_infected}</min_dist_infected>
       <max_dist_infected>${spawnParams.max_dist_infected}</max_dist_infected>
@@ -209,9 +322,19 @@ ${positionsXml}
     <generator_posbubbles>
 ${groupsXml}
     </generator_posbubbles>
-  </fresh>
+  </${mode}>`;
+  };
+
+  const xmlOutput = useMemo(() => {
+    return `<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<playerspawnpoints>
+${buildModeXml("fresh")}
+
+${buildModeXml("hop")}
+
+${buildModeXml("travel")}
 </playerspawnpoints>`;
-  }, [groups, spawnParams, generatorParams, groupParams]);
+  }, [dataByMode, spawnParams, generatorParams, groupParams]);
 
   const copyXml = async () => {
     try {
@@ -241,7 +364,7 @@ ${groupsXml}
         padding: 24,
       }}
     >
-      <div style={{ maxWidth: 1320, margin: "0 auto" }}>
+      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
         <Link
           href="/dashboard?lang=de"
           style={{
@@ -258,29 +381,52 @@ ${groupsXml}
           ← Zurück zum Dashboard
         </Link>
 
-        <div
-          style={{
-            border: "1px solid rgba(255,255,255,0.08)",
-            borderRadius: 28,
-            padding: 28,
-            background: "rgba(15,23,42,0.82)",
-            marginBottom: 24,
-          }}
-        >
+        <section style={heroStyle}>
           <h1 style={{ margin: 0, fontSize: 46, fontWeight: 900 }}>
             Playerspawnpoints Generator
           </h1>
-          <p
-            style={{
-              marginTop: 12,
-              color: "#94a3b8",
-              fontSize: 17,
-              lineHeight: 1.7,
-            }}
-          >
-            Einfacher DayZ playerspawnpoints.xml Generator für Step Mod!Z.
+          <p style={{ marginTop: 12, color: "#94a3b8", lineHeight: 1.7 }}>
+            Step Mod!Z Generator mit Chernarus, Livonia, Sakhal und Tabs für fresh / hop / travel.
           </p>
+        </section>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+          {(Object.keys(MAPS) as MapKey[]).map((mapKey) => (
+            <button
+              key={mapKey}
+              onClick={() => setSelectedMap(mapKey)}
+              style={{
+                ...(selectedMap === mapKey ? greenButtonStyle : blueButtonStyle),
+                padding: "10px 14px",
+              }}
+            >
+              {MAPS[mapKey].label}
+            </button>
+          ))}
         </div>
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
+          {(["fresh", "hop", "travel"] as Mode[]).map((mode) => (
+            <button
+              key={mode}
+              onClick={() => setSelectedMode(mode)}
+              style={{
+                ...(selectedMode === mode ? greenButtonStyle : blueButtonStyle),
+                padding: "10px 16px",
+                textTransform: "uppercase",
+              }}
+            >
+              {mode}
+            </button>
+          ))}
+        </div>
+
+        <DayzMap
+          image={currentMap.image}
+          worldSize={currentMap.worldSize}
+          markers={mapMarkers}
+          onAddPoint={addPosBubbleFromMap}
+        />
 
         <div
           style={{
@@ -288,10 +434,11 @@ ${groupsXml}
             gridTemplateColumns: "1.1fr 0.9fr",
             gap: 24,
             alignItems: "start",
+            marginTop: 24,
           }}
         >
           <section style={cardStyle}>
-            <h2 style={sectionTitleStyle}>Gruppen verwalten</h2>
+            <h2 style={sectionTitleStyle}>Gruppen verwalten ({selectedMode})</h2>
 
             <div style={{ display: "grid", gap: 12 }}>
               <input
@@ -306,7 +453,7 @@ ${groupsXml}
             </div>
 
             <div style={{ marginTop: 20, display: "grid", gap: 12 }}>
-              {groups.map((group) => (
+              {currentGroups.map((group) => (
                 <div
                   key={group.id}
                   style={{
@@ -328,10 +475,12 @@ ${groupsXml}
                     }}
                   >
                     <button
-                      onClick={() => {
-                        setSelectedGroupId(group.id);
-                        setGroupNameInput(group.name);
-                      }}
+                      onClick={() =>
+                        setSelectedGroupIdByMode((prev) => ({
+                          ...prev,
+                          [selectedMode]: group.id,
+                        }))
+                      }
                       style={{
                         ...blueButtonStyle,
                         padding: "10px 12px",
@@ -365,12 +514,7 @@ ${groupsXml}
           <section style={cardStyle}>
             <h2 style={sectionTitleStyle}>Pos-Bubble hinzufügen</h2>
 
-            <div
-              style={{
-                marginBottom: 12,
-                color: "#94a3b8",
-              }}
-            >
+            <div style={{ marginBottom: 12, color: "#94a3b8" }}>
               Aktive Gruppe:{" "}
               <span style={{ color: "#fff", fontWeight: 700 }}>
                 {selectedGroup?.name ?? "-"}
@@ -637,7 +781,6 @@ ${groupsXml}
                 placeholder="lifetime"
                 style={inputStyle}
               />
-
               <input
                 value={groupParams.counter}
                 onChange={(e) =>
@@ -653,12 +796,7 @@ ${groupsXml}
           </section>
         </div>
 
-        <section
-          style={{
-            ...cardStyle,
-            marginTop: 24,
-          }}
-        >
+        <section style={{ ...cardStyle, marginTop: 24 }}>
           <div
             style={{
               display: "flex",
@@ -684,7 +822,7 @@ ${groupsXml}
           <textarea
             value={xmlOutput}
             readOnly
-            rows={24}
+            rows={30}
             style={{
               width: "100%",
               borderRadius: 18,
@@ -702,6 +840,14 @@ ${groupsXml}
     </main>
   );
 }
+
+const heroStyle: CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 28,
+  padding: 28,
+  background: "rgba(15,23,42,0.82)",
+  marginBottom: 24,
+};
 
 const cardStyle: CSSProperties = {
   border: "1px solid rgba(255,255,255,0.08)",
