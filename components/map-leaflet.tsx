@@ -8,7 +8,6 @@ type MarkerPoint = {
   id: number;
   x: number;
   z: number;
-  label?: string;
 };
 
 function ClickHandler({
@@ -20,12 +19,8 @@ function ClickHandler({
 }) {
   useMapEvents({
     click(e) {
-      const lng = e.latlng.lng;
-      const lat = e.latlng.lat;
-
-      const x = Math.max(0, Math.min(worldSize, Math.round(lng)));
-      const z = Math.max(0, Math.min(worldSize, Math.round(lat)));
-
+      const x = Math.round(Math.max(0, Math.min(worldSize, e.latlng.lng)));
+      const z = Math.round(Math.max(0, Math.min(worldSize, e.latlng.lat)));
       onAddPoint({ x, z });
     },
   });
@@ -34,7 +29,7 @@ function ClickHandler({
 }
 
 const markerIcon = L.divIcon({
-  className: "custom-dayz-marker",
+  className: "dayz-marker",
   html: `
     <div style="
       width:18px;
@@ -76,13 +71,8 @@ export default function MapLeaflet({
         background: "rgba(15,23,42,0.82)",
       }}
     >
-      <div
-        style={{
-          marginBottom: 12,
-          color: "#94a3b8",
-        }}
-      >
-        Klick auf die Karte, um einen Spawnpunkt zu setzen. Mausrad = Zoom.
+      <div style={{ marginBottom: 12, color: "#94a3b8" }}>
+        Mausrad = Zoom · Karte ziehen = bewegen · Klick = Spawnpunkt setzen
       </div>
 
       <div
@@ -95,7 +85,7 @@ export default function MapLeaflet({
         <MapContainer
           center={center}
           zoom={0}
-          minZoom={-3}
+          minZoom={-2}
           maxZoom={4}
           crs={L.CRS.Simple}
           maxBounds={bounds}

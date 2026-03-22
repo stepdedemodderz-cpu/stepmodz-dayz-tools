@@ -82,16 +82,6 @@ const MAPS = {
     image: "/maps/chernarus.png",
     worldSize: 15360,
   },
-  livonia: {
-    label: "Livonia",
-    image: "/maps/livonia.png",
-    worldSize: 12800,
-  },
-  sakhal: {
-    label: "Sakhal",
-    image: "/maps/sakhal.png",
-    worldSize: 12800,
-  },
 } as const;
 
 type MapKey = keyof typeof MAPS;
@@ -111,7 +101,7 @@ function getBoolTagValue(parent: Element, tagName: string, fallback = false): bo
 export default function SpawnpointsPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const [selectedMap, setSelectedMap] = useState<MapKey>("chernarus");
+  const [selectedMap] = useState<MapKey>("chernarus");
 
   const [groups, setGroups] = useState<SpawnGroup[]>([
     {
@@ -351,7 +341,6 @@ export default function SpawnpointsPage() {
       id: pos.id,
       x: Number(pos.x) || 0,
       z: Number(pos.z) || 0,
-      label: selectedGroup?.name,
     }));
   }, [selectedGroup]);
 
@@ -503,28 +492,6 @@ ${groupsXml}
               <span style={{ color: "#94a3b8" }}>{importStatus}</span>
             )}
           </div>
-        </div>
-
-        <div
-          style={{
-            display: "flex",
-            gap: 10,
-            flexWrap: "wrap",
-            marginBottom: 24,
-          }}
-        >
-          {(Object.keys(MAPS) as MapKey[]).map((mapKey) => (
-            <button
-              key={mapKey}
-              onClick={() => setSelectedMap(mapKey)}
-              style={{
-                ...(selectedMap === mapKey ? greenButtonStyle : blueButtonStyle),
-                padding: "10px 14px",
-              }}
-            >
-              {MAPS[mapKey].label}
-            </button>
-          ))}
         </div>
 
         <MapLeaflet
