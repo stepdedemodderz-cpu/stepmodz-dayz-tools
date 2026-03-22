@@ -1,347 +1,106 @@
-"use client";
-
-import Link from "next/link";
-import { useMemo, useState, type CSSProperties } from "react";
-import DayzMap from "@/components/dayz-map";
-
-type Mode = "fresh" | "hop" | "travel";
-
-type PosBubble = {
-  id: number;
-  x: string;
-  z: string;
-};
-
-type SpawnGroup = {
-  id: number;
-  name: string;
-  positions: PosBubble[];
-};
-
-type SpawnParams = {
-  min_dist_infected: string;
-  max_dist_infected: string;
-  min_dist_player: string;
-  max_dist_player: string;
-  min_dist_static: string;
-  max_dist_static: string;
-};
-
-type GeneratorParams = {
-  grid_density: string;
-  grid_width: string;
-  grid_height: string;
-  min_dist_static: string;
-  max_dist_static: string;
-  min_steepness: string;
-  max_steepness: string;
-};
-
-type GroupParams = {
-  enablegroups: boolean;
-  groups_as_regular: boolean;
-  lifetime: string;
-  counter: string;
-};
-
-type ModeData = {
-  groups: SpawnGroup[];
-};
+import React, { useMemo, useRef, useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { Download, MapPin, RotateCcw, Trash2, Upload, Copy, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
 
 const MAPS = {
   chernarus: {
-    label: "Chernarus",
-    image: "/maps/chernarus.png",
-    worldSize: 15360,
+    name: "Chernarus",
+    size: 15360,
+    image:
+      "https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1600&q=80",
+    accent: "from-emerald-400/30 via-cyan-400/20 to-blue-500/20",
   },
   livonia: {
-    label: "Livonia",
-    image: "/maps/livonia.png",
-    worldSize: 12800,
+    name: "Livonia",
+    size: 12800,
+    image:
+      "https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1600&q=80",
+    accent: "from-lime-400/30 via-green-400/20 to-emerald-500/20",
   },
   sakhal: {
-    label: "Sakhal",
-    image: "/maps/sakhal.png",
-    worldSize: 12800,
+    name: "Sakhal",
+    size: 12800,
+    image:
+      "https://images.unsplash.com/photo-1482192596544-9eb780fc7f66?auto=format&fit=crop&w=1600&q=80",
+    accent: "from-sky-300/30 via-slate-200/20 to-indigo-500/20",
   },
-} as const;
+};
 
-type MapKey = keyof typeof MAPS;
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
 
-export default function SpawnpointsPage() {
-  const [selectedMap, setSelectedMap] = useState<MapKey>("chernarus");
-  const [selectedMode, setSelectedMode] = useState<Mode>("fresh");
+function buildXml(points) {
+  return `<spawnpoints>\n${points
+    .map(
+      (p) =>
+        `  <pos x="${p.x.toFixed(2)}" z="${p.z.toFixed(2)}"${p.y !== "" ? ` y="${Number(p.y).toFixed(2)}"` : ""} />`
+    )
+    .join("\n")}\n</spawnpoints>`;
+}
 
-  const [dataByMode, setDataByMode] = useState<Record<Mode, ModeData>>({
-    fresh: {
-      groups: [
-        {
-          id: 1,
-          name: "FreshGroup",
-          positions: [],
-        },
-      ],
-    },
-    hop: {
-      groups: [
-        {
-          id: 2,
-          name: "HopGroup",
-          positions: [],
-        },
-      ],
-    },
-    travel: {
-      groups: [
-        {
-          id: 3,
-          name: "TravelGroup",
-          positions: [],
-        },
-      ],
-    },
-  });
+function parseXml(xmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, "text/xml");
+  const nodes = [...doc.getElementsByTagName("pos")];
+  return nodes.map((node, index) => ({
+    id: crypto.randomUUID?.() || `${Date.now()}-${index}`,
+    x: Number(node.getAttribute("x") || 0),
+    z: Number(node.getAttribute("z") || 0),
+    y: node.getAttribute("y") || "",
+  }));
+}
 
-  const [selectedGroupIdByMode, setSelectedGroupIdByMode] = useState<Record<Mode, number>>({
-    fresh: 1,
-    hop: 2,
-    travel: 3,
-  });
+export default function DayZSpawnpointGeneratorAltStyle() {
+  const [selectedMap, setSelectedMap] = useState("chernarus");
+  const [points, setPoints] = useState([]);
+  const [manualY, setManualY] = useState("");
+  const [xmlInput, setXmlInput] = useState("");
+  const [copied, setCopied] = useState(false);
+  const mapRef = useRef(null);
 
-  const [groupNameInput, setGroupNameInput] = useState("");
-  const [x, setX] = useState("");
-  const [z, setZ] = useState("");
+  const map = MAPS[selectedMap];
+  const xmlOutput = useMemo(() => buildXml(points), [points]);
 
-  const [spawnParams, setSpawnParams] = useState<SpawnParams>({
-    min_dist_infected: "30",
-    max_dist_infected: "70",
-    min_dist_player: "65",
-    max_dist_player: "150",
-    min_dist_static: "0",
-    max_dist_static: "2",
-  });
+  const addPoint = (event) => {
+    const rect = mapRef.current?.getBoundingClientRect();
+    if (!rect) return;
 
-  const [generatorParams, setGeneratorParams] = useState<GeneratorParams>({
-    grid_density: "4",
-    grid_width: "200",
-    grid_height: "200",
-    min_dist_static: "0",
-    max_dist_static: "2",
-    min_steepness: "-45",
-    max_steepness: "45",
-  });
+    const relX = clamp((event.clientX - rect.left) / rect.width, 0, 1);
+    const relY = clamp((event.clientY - rect.top) / rect.height, 0, 1);
 
-  const [groupParams, setGroupParams] = useState<GroupParams>({
-    enablegroups: true,
-    groups_as_regular: true,
-    lifetime: "240",
-    counter: "-1",
-  });
+    const x = relX * map.size;
+    const z = relY * map.size;
 
-  const currentMap = MAPS[selectedMap];
-  const currentGroups = dataByMode[selectedMode].groups;
-  const selectedGroupId = selectedGroupIdByMode[selectedMode];
-
-  const selectedGroup =
-    currentGroups.find((group) => group.id === selectedGroupId) ?? currentGroups[0];
-
-  const updateModeGroups = (mode: Mode, groups: SpawnGroup[]) => {
-    setDataByMode((prev) => ({
+    setPoints((prev) => [
       ...prev,
-      [mode]: { groups },
-    }));
+      {
+        id: crypto.randomUUID?.() || `${Date.now()}-${prev.length}`,
+        x,
+        z,
+        y: manualY.trim(),
+      },
+    ]);
   };
 
-  const addGroup = () => {
-    const trimmed = groupNameInput.trim();
-    if (!trimmed) return;
-
-    const newGroup: SpawnGroup = {
-      id: Date.now(),
-      name: trimmed,
-      positions: [],
-    };
-
-    const nextGroups = [...currentGroups, newGroup];
-    updateModeGroups(selectedMode, nextGroups);
-
-    setSelectedGroupIdByMode((prev) => ({
-      ...prev,
-      [selectedMode]: newGroup.id,
-    }));
-
-    setGroupNameInput("");
-  };
-
-  const removeGroup = (groupId: number) => {
-    const updated = currentGroups.filter((group) => group.id !== groupId);
-
-    if (updated.length === 0) {
-      const fallback: SpawnGroup = {
-        id: Date.now(),
-        name: `${selectedMode}_group`,
-        positions: [],
-      };
-
-      updateModeGroups(selectedMode, [fallback]);
-
-      setSelectedGroupIdByMode((prev) => ({
-        ...prev,
-        [selectedMode]: fallback.id,
-      }));
-
-      return;
-    }
-
-    updateModeGroups(selectedMode, updated);
-
-    setSelectedGroupIdByMode((prev) => ({
-      ...prev,
-      [selectedMode]: updated[0].id,
-    }));
-  };
-
-  const renameGroup = (groupId: number, newName: string) => {
-    updateModeGroups(
-      selectedMode,
-      currentGroups.map((group) =>
-        group.id === groupId ? { ...group, name: newName } : group
-      )
-    );
-  };
-
-  const addPosBubble = () => {
-    if (!selectedGroup || !x.trim() || !z.trim()) return;
-
-    const newPos: PosBubble = {
-      id: Date.now(),
-      x: x.trim(),
-      z: z.trim(),
-    };
-
-    updateModeGroups(
-      selectedMode,
-      currentGroups.map((group) =>
-        group.id === selectedGroup.id
-          ? { ...group, positions: [...group.positions, newPos] }
-          : group
-      )
-    );
-
-    setX("");
-    setZ("");
-  };
-
-  const addPosBubbleFromMap = (point: { x: number; z: number }) => {
-    if (!selectedGroup) return;
-
-    const newPos: PosBubble = {
-      id: Date.now(),
-      x: String(point.x),
-      z: String(point.z),
-    };
-
-    updateModeGroups(
-      selectedMode,
-      currentGroups.map((group) =>
-        group.id === selectedGroup.id
-          ? { ...group, positions: [...group.positions, newPos] }
-          : group
-      )
-    );
-
-    setX(String(point.x));
-    setZ(String(point.z));
-  };
-
-  const removePosBubble = (groupId: number, posId: number) => {
-    updateModeGroups(
-      selectedMode,
-      currentGroups.map((group) =>
-        group.id === groupId
-          ? {
-              ...group,
-              positions: group.positions.filter((pos) => pos.id !== posId),
-            }
-          : group
-      )
-    );
-  };
-
-  const mapMarkers = useMemo(() => {
-    return (selectedGroup?.positions ?? []).map((pos) => ({
-      id: pos.id,
-      x: Number(pos.x) || 0,
-      z: Number(pos.z) || 0,
-    }));
-  }, [selectedGroup]);
-
-  const buildModeXml = (mode: Mode) => {
-    const groupsXml = dataByMode[mode].groups
-      .map((group) => {
-        const positionsXml =
-          group.positions.length > 0
-            ? group.positions
-                .map((pos) => `        <pos x="${pos.x}" z="${pos.z}" />`)
-                .join("\n")
-            : "";
-
-        return `      <group name="${group.name}">
-${positionsXml}
-      </group>`;
-      })
-      .join("\n");
-
-    return `  <${mode}>
-    <spawn_params>
-      <min_dist_infected>${spawnParams.min_dist_infected}</min_dist_infected>
-      <max_dist_infected>${spawnParams.max_dist_infected}</max_dist_infected>
-      <min_dist_player>${spawnParams.min_dist_player}</min_dist_player>
-      <max_dist_player>${spawnParams.max_dist_player}</max_dist_player>
-      <min_dist_static>${spawnParams.min_dist_static}</min_dist_static>
-      <max_dist_static>${spawnParams.max_dist_static}</max_dist_static>
-    </spawn_params>
-
-    <generator_params>
-      <grid_density>${generatorParams.grid_density}</grid_density>
-      <grid_width>${generatorParams.grid_width}</grid_width>
-      <grid_height>${generatorParams.grid_height}</grid_height>
-      <min_dist_static>${generatorParams.min_dist_static}</min_dist_static>
-      <max_dist_static>${generatorParams.max_dist_static}</max_dist_static>
-      <min_steepness>${generatorParams.min_steepness}</min_steepness>
-      <max_steepness>${generatorParams.max_steepness}</max_steepness>
-    </generator_params>
-
-    <group_params>
-      <enablegroups>${String(groupParams.enablegroups)}</enablegroups>
-      <groups_as_regular>${String(groupParams.groups_as_regular)}</groups_as_regular>
-      <lifetime>${groupParams.lifetime}</lifetime>
-      <counter>${groupParams.counter}</counter>
-    </group_params>
-
-    <generator_posbubbles>
-${groupsXml}
-    </generator_posbubbles>
-  </${mode}>`;
-  };
-
-  const xmlOutput = useMemo(() => {
-    return `<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
-<playerspawnpoints>
-${buildModeXml("fresh")}
-
-${buildModeXml("hop")}
-
-${buildModeXml("travel")}
-</playerspawnpoints>`;
-  }, [dataByMode, spawnParams, generatorParams, groupParams]);
+  const removePoint = (id) => setPoints((prev) => prev.filter((p) => p.id !== id));
+  const clearPoints = () => setPoints([]);
 
   const copyXml = async () => {
     try {
       await navigator.clipboard.writeText(xmlOutput);
-      alert("XML kopiert");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
-      alert("Kopieren hat nicht funktioniert");
+      setCopied(false);
     }
   };
 
@@ -350,560 +109,185 @@ ${buildModeXml("travel")}
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "cfgplayerspawnpoints.xml";
+    a.download = `${selectedMap}-spawnpoints.xml`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  const importXml = () => {
+    try {
+      const imported = parseXml(xmlInput);
+      setPoints(imported);
+    } catch {
+      alert("XML konnte nicht gelesen werden.");
+    }
+  };
+
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "linear-gradient(180deg, #020617 0%, #0f172a 100%)",
-        color: "#fff",
-        padding: 24,
-      }}
-    >
-      <div style={{ maxWidth: 1400, margin: "0 auto" }}>
-        <Link
-          href="/dashboard?lang=de"
-          style={{
-            display: "inline-block",
-            marginBottom: 20,
-            padding: "12px 18px",
-            borderRadius: 14,
-            background: "#1e293b",
-            color: "#fff",
-            textDecoration: "none",
-            fontWeight: 700,
-          }}
+    <div className="min-h-screen bg-slate-950 text-slate-100">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.18),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(34,197,94,0.12),transparent_30%)]" />
+      <div className="relative mx-auto max-w-7xl p-6 md:p-10">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between"
         >
-          ← Zurück zum Dashboard
-        </Link>
-
-        <section style={heroStyle}>
-          <h1 style={{ margin: 0, fontSize: 46, fontWeight: 900 }}>
-            Playerspawnpoints Generator
-          </h1>
-          <p style={{ marginTop: 12, color: "#94a3b8", lineHeight: 1.7 }}>
-            Step Mod!Z Generator mit Chernarus, Livonia, Sakhal und Tabs für fresh / hop / travel.
-          </p>
-        </section>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
-          {(Object.keys(MAPS) as MapKey[]).map((mapKey) => (
-            <button
-              key={mapKey}
-              onClick={() => setSelectedMap(mapKey)}
-              style={{
-                ...(selectedMap === mapKey ? greenButtonStyle : blueButtonStyle),
-                padding: "10px 14px",
-              }}
-            >
-              {MAPS[mapKey].label}
-            </button>
-          ))}
-        </div>
-
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 24 }}>
-          {(["fresh", "hop", "travel"] as Mode[]).map((mode) => (
-            <button
-              key={mode}
-              onClick={() => setSelectedMode(mode)}
-              style={{
-                ...(selectedMode === mode ? greenButtonStyle : blueButtonStyle),
-                padding: "10px 16px",
-                textTransform: "uppercase",
-              }}
-            >
-              {mode}
-            </button>
-          ))}
-        </div>
-
-        <DayzMap
-          image={currentMap.image}
-          worldSize={currentMap.worldSize}
-          markers={mapMarkers}
-          onAddPoint={addPosBubbleFromMap}
-        />
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1.1fr 0.9fr",
-            gap: 24,
-            alignItems: "start",
-            marginTop: 24,
-          }}
-        >
-          <section style={cardStyle}>
-            <h2 style={sectionTitleStyle}>Gruppen verwalten ({selectedMode})</h2>
-
-            <div style={{ display: "grid", gap: 12 }}>
-              <input
-                value={groupNameInput}
-                onChange={(e) => setGroupNameInput(e.target.value)}
-                placeholder="Neuer Gruppenname"
-                style={inputStyle}
-              />
-              <button onClick={addGroup} style={greenButtonStyle}>
-                Gruppe hinzufügen
-              </button>
-            </div>
-
-            <div style={{ marginTop: 20, display: "grid", gap: 12 }}>
-              {currentGroups.map((group) => (
-                <div
-                  key={group.id}
-                  style={{
-                    borderRadius: 16,
-                    border:
-                      group.id === selectedGroupId
-                        ? "1px solid rgba(56,189,248,0.7)"
-                        : "1px solid rgba(255,255,255,0.08)",
-                    background: "#020617",
-                    padding: 14,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 10,
-                      alignItems: "center",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <button
-                      onClick={() =>
-                        setSelectedGroupIdByMode((prev) => ({
-                          ...prev,
-                          [selectedMode]: group.id,
-                        }))
-                      }
-                      style={{
-                        ...blueButtonStyle,
-                        padding: "10px 12px",
-                      }}
-                    >
-                      Auswählen
-                    </button>
-
-                    <input
-                      value={group.name}
-                      onChange={(e) => renameGroup(group.id, e.target.value)}
-                      style={{ ...inputStyle, flex: 1, minWidth: 180 }}
-                    />
-
-                    <button
-                      onClick={() => removeGroup(group.id)}
-                      style={deleteButtonStyle}
-                    >
-                      Löschen
-                    </button>
-                  </div>
-
-                  <div style={{ marginTop: 10, color: "#94a3b8" }}>
-                    Pos-Bubbles: {group.positions.length}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section style={cardStyle}>
-            <h2 style={sectionTitleStyle}>Pos-Bubble hinzufügen</h2>
-
-            <div style={{ marginBottom: 12, color: "#94a3b8" }}>
-              Aktive Gruppe:{" "}
-              <span style={{ color: "#fff", fontWeight: 700 }}>
-                {selectedGroup?.name ?? "-"}
-              </span>
-            </div>
-
-            <div style={{ display: "grid", gap: 12 }}>
-              <input
-                value={x}
-                onChange={(e) => setX(e.target.value)}
-                placeholder="X Koordinate"
-                style={inputStyle}
-              />
-              <input
-                value={z}
-                onChange={(e) => setZ(e.target.value)}
-                placeholder="Z Koordinate"
-                style={inputStyle}
-              />
-              <button onClick={addPosBubble} style={greenButtonStyle}>
-                Pos-Bubble hinzufügen
-              </button>
-            </div>
-
-            <div style={{ marginTop: 20, display: "grid", gap: 10 }}>
-              {(selectedGroup?.positions ?? []).length === 0 ? (
-                <p style={{ color: "#94a3b8" }}>
-                  Noch keine Pos-Bubbles in dieser Gruppe.
-                </p>
-              ) : (
-                selectedGroup.positions.map((pos, index) => (
-                  <div
-                    key={pos.id}
-                    style={{
-                      padding: 12,
-                      borderRadius: 14,
-                      background: "#020617",
-                      border: "1px solid rgba(255,255,255,0.08)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "center",
-                      gap: 12,
-                    }}
-                  >
-                    <div>
-                      #{index + 1} — X: {pos.x} | Z: {pos.z}
-                    </div>
-
-                    <button
-                      onClick={() => removePosBubble(selectedGroup.id, pos.id)}
-                      style={deleteButtonStyle}
-                    >
-                      Löschen
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-        </div>
-
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "1fr 1fr 1fr",
-            gap: 24,
-            marginTop: 24,
-          }}
-        >
-          <section style={cardStyle}>
-            <h2 style={sectionTitleStyle}>spawn_params</h2>
-            <div style={{ display: "grid", gap: 10 }}>
-              <input
-                value={spawnParams.min_dist_infected}
-                onChange={(e) =>
-                  setSpawnParams((prev) => ({
-                    ...prev,
-                    min_dist_infected: e.target.value,
-                  }))
-                }
-                placeholder="min_dist_infected"
-                style={inputStyle}
-              />
-              <input
-                value={spawnParams.max_dist_infected}
-                onChange={(e) =>
-                  setSpawnParams((prev) => ({
-                    ...prev,
-                    max_dist_infected: e.target.value,
-                  }))
-                }
-                placeholder="max_dist_infected"
-                style={inputStyle}
-              />
-              <input
-                value={spawnParams.min_dist_player}
-                onChange={(e) =>
-                  setSpawnParams((prev) => ({
-                    ...prev,
-                    min_dist_player: e.target.value,
-                  }))
-                }
-                placeholder="min_dist_player"
-                style={inputStyle}
-              />
-              <input
-                value={spawnParams.max_dist_player}
-                onChange={(e) =>
-                  setSpawnParams((prev) => ({
-                    ...prev,
-                    max_dist_player: e.target.value,
-                  }))
-                }
-                placeholder="max_dist_player"
-                style={inputStyle}
-              />
-              <input
-                value={spawnParams.min_dist_static}
-                onChange={(e) =>
-                  setSpawnParams((prev) => ({
-                    ...prev,
-                    min_dist_static: e.target.value,
-                  }))
-                }
-                placeholder="min_dist_static"
-                style={inputStyle}
-              />
-              <input
-                value={spawnParams.max_dist_static}
-                onChange={(e) =>
-                  setSpawnParams((prev) => ({
-                    ...prev,
-                    max_dist_static: e.target.value,
-                  }))
-                }
-                placeholder="max_dist_static"
-                style={inputStyle}
-              />
-            </div>
-          </section>
-
-          <section style={cardStyle}>
-            <h2 style={sectionTitleStyle}>generator_params</h2>
-            <div style={{ display: "grid", gap: 10 }}>
-              <input
-                value={generatorParams.grid_density}
-                onChange={(e) =>
-                  setGeneratorParams((prev) => ({
-                    ...prev,
-                    grid_density: e.target.value,
-                  }))
-                }
-                placeholder="grid_density"
-                style={inputStyle}
-              />
-              <input
-                value={generatorParams.grid_width}
-                onChange={(e) =>
-                  setGeneratorParams((prev) => ({
-                    ...prev,
-                    grid_width: e.target.value,
-                  }))
-                }
-                placeholder="grid_width"
-                style={inputStyle}
-              />
-              <input
-                value={generatorParams.grid_height}
-                onChange={(e) =>
-                  setGeneratorParams((prev) => ({
-                    ...prev,
-                    grid_height: e.target.value,
-                  }))
-                }
-                placeholder="grid_height"
-                style={inputStyle}
-              />
-              <input
-                value={generatorParams.min_dist_static}
-                onChange={(e) =>
-                  setGeneratorParams((prev) => ({
-                    ...prev,
-                    min_dist_static: e.target.value,
-                  }))
-                }
-                placeholder="min_dist_static"
-                style={inputStyle}
-              />
-              <input
-                value={generatorParams.max_dist_static}
-                onChange={(e) =>
-                  setGeneratorParams((prev) => ({
-                    ...prev,
-                    max_dist_static: e.target.value,
-                  }))
-                }
-                placeholder="max_dist_static"
-                style={inputStyle}
-              />
-              <input
-                value={generatorParams.min_steepness}
-                onChange={(e) =>
-                  setGeneratorParams((prev) => ({
-                    ...prev,
-                    min_steepness: e.target.value,
-                  }))
-                }
-                placeholder="min_steepness"
-                style={inputStyle}
-              />
-              <input
-                value={generatorParams.max_steepness}
-                onChange={(e) =>
-                  setGeneratorParams((prev) => ({
-                    ...prev,
-                    max_steepness: e.target.value,
-                  }))
-                }
-                placeholder="max_steepness"
-                style={inputStyle}
-              />
-            </div>
-          </section>
-
-          <section style={cardStyle}>
-            <h2 style={sectionTitleStyle}>group_params</h2>
-            <div style={{ display: "grid", gap: 12 }}>
-              <label style={checkboxRowStyle}>
-                <input
-                  type="checkbox"
-                  checked={groupParams.enablegroups}
-                  onChange={(e) =>
-                    setGroupParams((prev) => ({
-                      ...prev,
-                      enablegroups: e.target.checked,
-                    }))
-                  }
-                />
-                <span>enablegroups</span>
-              </label>
-
-              <label style={checkboxRowStyle}>
-                <input
-                  type="checkbox"
-                  checked={groupParams.groups_as_regular}
-                  onChange={(e) =>
-                    setGroupParams((prev) => ({
-                      ...prev,
-                      groups_as_regular: e.target.checked,
-                    }))
-                  }
-                />
-                <span>groups_as_regular</span>
-              </label>
-
-              <input
-                value={groupParams.lifetime}
-                onChange={(e) =>
-                  setGroupParams((prev) => ({
-                    ...prev,
-                    lifetime: e.target.value,
-                  }))
-                }
-                placeholder="lifetime"
-                style={inputStyle}
-              />
-              <input
-                value={groupParams.counter}
-                onChange={(e) =>
-                  setGroupParams((prev) => ({
-                    ...prev,
-                    counter: e.target.value,
-                  }))
-                }
-                placeholder="counter"
-                style={inputStyle}
-              />
-            </div>
-          </section>
-        </div>
-
-        <section style={{ ...cardStyle, marginTop: 24 }}>
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              gap: 12,
-              flexWrap: "wrap",
-              marginBottom: 18,
-            }}
-          >
-            <h2 style={{ margin: 0 }}>DayZ XML Output</h2>
-
-            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-              <button onClick={copyXml} style={blueButtonStyle}>
-                XML kopieren
-              </button>
-              <button onClick={downloadXml} style={greenButtonStyle}>
-                XML downloaden
-              </button>
-            </div>
+          <div>
+            <Badge className="mb-3 rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1 text-cyan-200">
+              <Sparkles className="mr-2 h-3.5 w-3.5" /> Modern Alternative UI
+            </Badge>
+            <h1 className="text-4xl font-bold tracking-tight md:text-5xl">DayZ Spawnpoint Generator</h1>
+            <p className="mt-3 max-w-2xl text-slate-300">
+              Gleiches Grundprinzip wie klassische Spawnpoint-Tools: Karte wählen, Punkte setzen,
+              Liste verwalten und am Ende XML exportieren — aber in einem deutlich moderneren Stil.
+            </p>
           </div>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline" className="border-slate-700 bg-slate-900/70" onClick={clearPoints}>
+              <RotateCcw className="mr-2 h-4 w-4" /> Alles löschen
+            </Button>
+            <Button onClick={downloadXml} className="rounded-2xl">
+              <Download className="mr-2 h-4 w-4" /> XML herunterladen
+            </Button>
+          </div>
+        </motion.div>
 
-          <textarea
-            value={xmlOutput}
-            readOnly
-            rows={30}
-            style={{
-              width: "100%",
-              borderRadius: 18,
-              padding: 16,
-              background: "#020617",
-              color: "#fff",
-              border: "1px solid rgba(255,255,255,0.08)",
-              resize: "vertical",
-              fontSize: 14,
-              lineHeight: 1.6,
-            }}
-          />
-        </section>
+        <div className="grid gap-6 xl:grid-cols-[1.45fr_0.75fr]">
+          <Card className="overflow-hidden rounded-3xl border-slate-800 bg-slate-900/70 backdrop-blur">
+            <CardHeader className="pb-4">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <CardTitle className="text-2xl">Map Editor</CardTitle>
+                  <CardDescription>
+                    Klicke auf die Karte, um Spawnpunkte zu setzen. Die Position wird direkt in X/Z umgerechnet.
+                  </CardDescription>
+                </div>
+                <Tabs value={selectedMap} onValueChange={setSelectedMap}>
+                  <TabsList className="grid w-full grid-cols-3 bg-slate-800/80 lg:w-[360px]">
+                    {Object.entries(MAPS).map(([key, value]) => (
+                      <TabsTrigger key={key} value={key}>
+                        {value.name}
+                      </TabsTrigger>
+                    ))}
+                  </TabsList>
+                </Tabs>
+              </div>
+              <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center">
+                <div className="w-full sm:w-52">
+                  <label className="mb-2 block text-sm text-slate-400">Optionaler Y-Wert</label>
+                  <Input
+                    value={manualY}
+                    onChange={(e) => setManualY(e.target.value)}
+                    placeholder="z. B. 12.50"
+                    className="border-slate-700 bg-slate-950/70"
+                  />
+                </div>
+                <div className="text-sm text-slate-400 sm:pt-7">
+                  Kartengröße: <span className="font-medium text-slate-200">{map.size} x {map.size}</span>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div
+                ref={mapRef}
+                onClick={addPoint}
+                className={`relative aspect-[16/10] cursor-crosshair overflow-hidden rounded-[28px] border border-slate-700 bg-gradient-to-br ${map.accent}`}
+              >
+                <img src={map.image} alt={map.name} className="absolute inset-0 h-full w-full object-cover opacity-45" />
+                <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.08)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.08)_1px,transparent_1px)] bg-[size:48px_48px]" />
+                <div className="absolute left-4 top-4 rounded-2xl border border-white/10 bg-slate-950/65 px-4 py-2 text-sm backdrop-blur">
+                  <div className="font-medium">{map.name}</div>
+                  <div className="text-slate-400">{points.length} Spawnpunkte gesetzt</div>
+                </div>
+
+                {points.map((point, index) => {
+                  const left = `${(point.x / map.size) * 100}%`;
+                  const top = `${(point.z / map.size) * 100}%`;
+                  return (
+                    <motion.div
+                      key={point.id}
+                      initial={{ scale: 0.6, opacity: 0 }}
+                      animate={{ scale: 1, opacity: 1 }}
+                      style={{ left, top }}
+                      className="absolute -translate-x-1/2 -translate-y-1/2"
+                    >
+                      <div className="flex h-7 w-7 items-center justify-center rounded-full border border-white/20 bg-cyan-400/90 text-xs font-bold text-slate-950 shadow-lg shadow-cyan-500/30">
+                        {index + 1}
+                      </div>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-6">
+            <Card className="rounded-3xl border-slate-800 bg-slate-900/70 backdrop-blur">
+              <CardHeader>
+                <CardTitle>Spawn Points</CardTitle>
+                <CardDescription>Verwalte alle gesetzten Positionen und entferne einzelne Einträge.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ScrollArea className="h-[320px] pr-3">
+                  <div className="space-y-3">
+                    {points.length === 0 ? (
+                      <div className="rounded-2xl border border-dashed border-slate-700 p-6 text-center text-sm text-slate-400">
+                        Noch keine Spawnpunkte vorhanden.
+                      </div>
+                    ) : (
+                      points.map((point, index) => (
+                        <div key={point.id} className="rounded-2xl border border-slate-800 bg-slate-950/70 p-4">
+                          <div className="mb-3 flex items-center justify-between">
+                            <div className="flex items-center gap-2 font-medium">
+                              <MapPin className="h-4 w-4 text-cyan-300" /> Punkt {index + 1}
+                            </div>
+                            <Button variant="ghost" size="icon" onClick={() => removePoint(point.id)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
+                          <div className="grid grid-cols-3 gap-2 text-sm">
+                            <div className="rounded-xl bg-slate-900 p-2"><span className="text-slate-400">X</span><div>{point.x.toFixed(2)}</div></div>
+                            <div className="rounded-xl bg-slate-900 p-2"><span className="text-slate-400">Z</span><div>{point.z.toFixed(2)}</div></div>
+                            <div className="rounded-xl bg-slate-900 p-2"><span className="text-slate-400">Y</span><div>{point.y === "" ? "—" : point.y}</div></div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </ScrollArea>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-3xl border-slate-800 bg-slate-900/70 backdrop-blur">
+              <CardHeader>
+                <CardTitle>XML Export / Import</CardTitle>
+                <CardDescription>XML kopieren, herunterladen oder bestehende Daten importieren.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Button onClick={copyXml} variant="outline" className="border-slate-700 bg-slate-950/70">
+                    <Copy className="mr-2 h-4 w-4" /> {copied ? "Kopiert" : "XML kopieren"}
+                  </Button>
+                  <Button onClick={downloadXml}>
+                    <Download className="mr-2 h-4 w-4" /> Exportieren
+                  </Button>
+                </div>
+                <Textarea value={xmlOutput} readOnly className="min-h-[160px] border-slate-700 bg-slate-950/70 font-mono text-xs" />
+                <Separator className="bg-slate-800" />
+                <Textarea
+                  value={xmlInput}
+                  onChange={(e) => setXmlInput(e.target.value)}
+                  placeholder="Hier vorhandenes XML einfügen..."
+                  className="min-h-[140px] border-slate-700 bg-slate-950/70 font-mono text-xs"
+                />
+                <Button onClick={importXml} variant="secondary">
+                  <Upload className="mr-2 h-4 w-4" /> XML importieren
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       </div>
-    </main>
+    </div>
   );
 }
-
-const heroStyle: CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 28,
-  padding: 28,
-  background: "rgba(15,23,42,0.82)",
-  marginBottom: 24,
-};
-
-const cardStyle: CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 24,
-  padding: 24,
-  background: "rgba(15,23,42,0.82)",
-};
-
-const sectionTitleStyle: CSSProperties = {
-  marginTop: 0,
-  marginBottom: 16,
-};
-
-const inputStyle: CSSProperties = {
-  padding: 14,
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.08)",
-  background: "#020617",
-  color: "#fff",
-  outline: "none",
-  fontSize: 15,
-};
-
-const greenButtonStyle: CSSProperties = {
-  border: "none",
-  borderRadius: 14,
-  padding: "14px 16px",
-  background: "#22c55e",
-  color: "#052e16",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const blueButtonStyle: CSSProperties = {
-  border: "none",
-  borderRadius: 14,
-  padding: "14px 16px",
-  background: "#38bdf8",
-  color: "#082f49",
-  fontWeight: 800,
-  cursor: "pointer",
-};
-
-const deleteButtonStyle: CSSProperties = {
-  border: "none",
-  borderRadius: 10,
-  padding: "8px 12px",
-  background: "#ef4444",
-  color: "#fff",
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const checkboxRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  color: "#fff",
-};
